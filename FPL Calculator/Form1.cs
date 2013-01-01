@@ -92,10 +92,6 @@ namespace FPL_Calculator
             backgroundWorkerBruteForce.ReportProgress(0, "Retrieving Liquipedia page");
             WebFetch page = new WebFetch(textBoxURL.Text + "&action=edit", errorwriter);
 
-            // Reads HTML from a file - for debugging only
-            //StreamReader reader = new StreamReader(".//example.txt");
-            //WebFetch page = new WebFetch(reader);
-
             if (page.pageContent != string.Empty)
             {
                 page.ReduceToWikiMarkup();
@@ -178,10 +174,6 @@ namespace FPL_Calculator
             // Get HTML from Liquipedia
             toolStripStatusLabel.Text = "Retrieving Liquipedia page";
             WebFetch page = new WebFetch(textBoxURL.Text + "&action=edit", errorwriter);
-
-            // Reads HTML from a file - for debugging only
-            // StreamReader reader = new StreamReader(".//example.txt");
-            // WebFetch page = new WebFetch(reader);
 
             if (page.pageContent != string.Empty)
             {

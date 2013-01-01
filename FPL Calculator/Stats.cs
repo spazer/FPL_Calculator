@@ -18,6 +18,11 @@ namespace FPL_Calculator
         /// Base liquipedia link
         /// </summary>
         const string WIKIBASE = "http://wiki.teamliquid.net/starcraft2/index.php?title=";
+
+        /// <summary>
+        /// FPL stats page
+        /// </summary>
+        const string FPLSTATS = "http://www.teamliquid.net/fantasy/proleague/Stats.php?r=12";
         #endregion Constants
 
         #region Delegates
@@ -93,12 +98,24 @@ namespace FPL_Calculator
             altSearcher = new AlternateNames(errorwriter);
 
             // Read Do Not Draft list
-            StreamReader reader = new StreamReader(".//DoNotDraft.txt");
-            doNotDraftList.Add((reader.ReadLine()).ToUpper());
+            try
+            {
+                StreamReader reader = new StreamReader(".//DoNotDraft.txt");
+                doNotDraftList.Add((reader.ReadLine()).ToUpper());
+            }
+            catch (FileNotFoundException e)
+            {
+                errorwriter.Write("Could not find DoNotDraft.txt ( " + e.Message + ")");
+            }
+            catch (Exception e)
+            {
+                errorwriter.Write("Error making the do not draft list ( " + e.Message + ")");
+            }
+            
 
             // Read source for player and team lists
-            reader = new StreamReader(".//PlayerAndTeamSource.txt");
-            string source = reader.ReadToEnd();
+            WebFetch fetch = new WebFetch(FPLSTATS, errorwriter);
+            string source = fetch.pageContent;
 
             // Locate start of team table
             index = source.IndexOf("<table class='highlight'>");
@@ -931,7 +948,7 @@ namespace FPL_Calculator
             }
 
             writer.WriteLine(teamList[team].Name + "\t" + teamList[team].Cost + "\t" + teamList[team].TotalPoints);
-            writer.Write("\n\nNote that the program currently doesn't check to see if this team meets the race requirements");
+            writer.Write("\n\nNote that this function currently doesn't check to see if this team meets the race requirements");
 
             writer.Close();
         }

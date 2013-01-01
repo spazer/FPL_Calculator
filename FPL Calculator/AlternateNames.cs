@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 using System.Text;
+using System.Windows.Forms;
 
 namespace FPL_Calculator
 {
@@ -21,59 +22,70 @@ namespace FPL_Calculator
         /// <param name="nick"></param>
         public string FindPlayerAlt(string nick, Dictionary<string,Player>.KeyCollection allNames)
         {
-            StreamReader reader = new StreamReader(".//AlternateNames.txt");
-            string input;
-            string newNick;
-
-            do
+            try
             {
-                // Get line of alts
-                input = reader.ReadLine();
-                input = input.ToUpper();
+                StreamReader reader = new StreamReader(".//AlternateNames.txt");
+                string input;
+                string newNick;
 
-                // See if the current line of alts contains the input nick
-                if (input.Contains(nick.ToUpper()))
+                do
                 {
-                    int index = 0;
-                    while (true)
+                    // Get line of alts
+                    input = reader.ReadLine();
+                    input = input.ToUpper();
+
+                    // See if the current line of alts contains the input nick
+                    if (input.Contains(nick.ToUpper()))
                     {
-                        // Parse a nick
-                        int commaLocation = input.IndexOf(",", index);
-                        if (commaLocation == -1)
+                        int index = 0;
+                        while (true)
                         {
-                            // Get all remaining characters for a final match attempt
-                            newNick = input.Substring(index, input.Length - index).Trim();
-                            if (allNames.Contains(newNick))
+                            // Parse a nick
+                            int commaLocation = input.IndexOf(",", index);
+                            if (commaLocation == -1)
                             {
-                                errorwriter.Write("Match found: " + newNick);
-                                reader.Close();
-                                return newNick;
+                                // Get all remaining characters for a final match attempt
+                                newNick = input.Substring(index, input.Length - index).Trim();
+                                if (allNames.Contains(newNick))
+                                {
+                                    errorwriter.Write("Match found: " + newNick);
+                                    reader.Close();
+                                    return newNick;
+                                }
+                                break;
                             }
-                            break;
-                        }
-                        else
-                        {
-                            newNick = input.Substring(index, commaLocation - index);
-
-                            // If the new nick is found in the collection of players, return the new nick
-                            if (allNames.Contains(newNick))
+                            else
                             {
-                                errorwriter.Write("Match found: " + newNick);
-                                reader.Close();
-                                return newNick;
-                            }
+                                newNick = input.Substring(index, commaLocation - index);
 
-                            // Advance past the comma
-                            index = commaLocation + 1;
+                                // If the new nick is found in the collection of players, return the new nick
+                                if (allNames.Contains(newNick))
+                                {
+                                    errorwriter.Write("Match found: " + newNick);
+                                    reader.Close();
+                                    return newNick;
+                                }
+
+                                // Advance past the comma
+                                index = commaLocation + 1;
+                            }
                         }
                     }
-                }
-            } while (!reader.EndOfStream);
+                } while (!reader.EndOfStream);
 
-            // Search failed
-            errorwriter.Write("No match found");
-            reader.Close();
-            return string.Empty;
+                // Search failed
+                errorwriter.Write("No match found");
+                reader.Close();
+                return string.Empty;
+            }
+            catch (FileNotFoundException e)
+            {
+                errorwriter.Write("Could not find AlternateNames.txt (" + e.Message + ")");
+            }
+            catch (Exception e)
+            {
+                errorwriter.Write("Error reading alternate name file (" + e.Message + ")");
+            }
         }
     }
 }
