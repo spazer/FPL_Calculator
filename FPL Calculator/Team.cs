@@ -62,11 +62,6 @@ namespace FPL_Calculator
         }
         #endregion Properties
 
-        public int Points(int week)
-        {
-            return points[week - 1];
-        }
-
         #region Constructor
         public Team(string inputName, int inputCost, int inputArraySize)
         {
@@ -120,5 +115,10 @@ namespace FPL_Calculator
             }
         }
         #endregion PointAllocation
+
+        public int Points(int week)
+        {
+            return points[week - 1];
+        }
     }
 }

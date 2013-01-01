@@ -6,25 +6,79 @@ using System.Text;
 
 namespace FPL_Calculator
 {
-    class Stats
+    partial class Stats
     {
+        #region Constants
+        /// <summary>
+        /// Determines the size of the player/team point arrays (a.k.a number of weeks)
+        /// </summary>
         const int ARRAYSIZE = 10;
+
+        /// <summary>
+        /// Base liquipedia link
+        /// </summary>
         const string WIKIBASE = "http://wiki.teamliquid.net/starcraft2/index.php?title=";
+        #endregion Constants
 
+        #region Delegates
+        /// <summary>
+        /// Delegate for progress updates
+        /// </summary>
+        /// <param name="progress">Progress from 0-100</param>
         public delegate void progressEventHandler(int progress);
-        public event progressEventHandler ProgressUpdate;
+        #endregion Delegates
 
+        #region Events
+        /// <summary>
+        /// Event for progress updates
+        /// </summary>
+        public event progressEventHandler ProgressUpdate;
+        #endregion Events
+
+        #region Structs
+        /// <summary>
+        /// Contains data for a single solution for the algorithm based solutions
+        /// </summary>
         struct chosenTeam
         {
+            /// <summary>
+            /// Players on the main team
+            /// </summary>
             public string[] players;
+
+            /// <summary>
+            /// Chosen progaming team
+            /// </summary>
             public string team;
         }
-        
+        #endregion Structs
+
+        #region Variables
+        /// <summary>
+        /// Contains all teams in a list
+        /// </summary>
         private Dictionary<string, Team> teamList = new Dictionary<string, Team>();
+
+        /// <summary>
+        /// Contains all players in a list
+        /// </summary>
         private Dictionary<string, Player> playerList = new Dictionary<string, Player>();
+
+        /// <summary>
+        /// Writes messages to a logfile
+        /// </summary>
         private ErrorWriter errorwriter;
+
+        /// <summary>
+        /// Searches for alternate player names
+        /// </summary>
         private AlternateNames altSearcher;
+
+        /// <summary>
+        /// Contains players that should not be drafted in the first week
+        /// </summary>
         private List<string> doNotDraftList = new List<string>();
+        #endregion Variables
 
         #region Constructor
         public Stats(ErrorWriter ewriter) 
@@ -881,31 +935,9 @@ namespace FPL_Calculator
 
             writer.Close();
         }
-        /*
-        private void RaceRequirementCheck(string[] team, bool &tFlag, bool &pFlag, bool &zFlag)
-        {
-            tFlag = false;
-            pFlag = false;
-            zFlag = false;
-            
-            for (int i = 0; i < team.Count(); i++)
-            {
-                switch (playerList[team[i]].Race)
-                {
-                    case "T":
-                        tFlag = true;
-                        break;
-                    case "P":
-                        pFlag = true;
-                        break;
-                    case "Z":
-                        zFlag = true;
-                        break;
-                }
-            }
-        }
-        */
+        #endregion BestTeamGenerationNoTrades
 
+        #region RequirementChecks
         /// <summary>
         /// Determines the difference between the selected team and the cost limit
         /// </summary>
@@ -963,6 +995,7 @@ namespace FPL_Calculator
 
             return total - 13;
         }
+        #endregion RequirementChecks
 
         /// <summary>
         /// Calculates the total points of the main team
@@ -982,6 +1015,5 @@ namespace FPL_Calculator
 
             return total;
         }
-        #endregion BestTeamGenerationNoTrades
     }
 }

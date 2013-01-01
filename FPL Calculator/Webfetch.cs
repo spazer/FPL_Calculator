@@ -100,9 +100,11 @@ namespace FPL_Calculator
         {
             try
             {
+                // Find the tags that surround the wiki markup
                 int start = pageContent.IndexOf(">", pageContent.IndexOf("<textarea")) + 1;
                 int end = pageContent.IndexOf("</textarea");
 
+                // Get all data between those tags
                 pageContent = pageContent.Substring(start, end - start);
             }
             catch (System.Net.WebException e)
