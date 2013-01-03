@@ -215,8 +215,6 @@ namespace FPL_Calculator
 
             // Output log entry
             errorwriter.Write("Info for " + playerList.Count + " players read");
-
-            reader.Close();
         }
         #endregion Constructor
 

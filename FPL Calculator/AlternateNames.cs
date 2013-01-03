@@ -81,10 +81,12 @@ namespace FPL_Calculator
             catch (FileNotFoundException e)
             {
                 errorwriter.Write("Could not find AlternateNames.txt (" + e.Message + ")");
+                return string.Empty;
             }
             catch (Exception e)
             {
                 errorwriter.Write("Error reading alternate name file (" + e.Message + ")");
+                return string.Empty;
             }
         }
     }
