@@ -23,6 +23,10 @@ namespace FPL_Calculator
         /// FPL stats page
         /// </summary>
         const string FPLSTATS = "http://www.teamliquid.net/fantasy/proleague/Stats.php?r=12";
+
+        const int MAINCOSTLIMIT = 30;
+        const int ANTICOSTLIMIT = 13;
+        const int TOTALGAMES = 7;
         #endregion Constants
 
         #region Delegates
@@ -59,6 +63,8 @@ namespace FPL_Calculator
         #endregion Structs
 
         #region Variables
+        private int maxWeeks;
+
         /// <summary>
         /// Contains all teams in a list
         /// </summary>
@@ -101,7 +107,11 @@ namespace FPL_Calculator
             try
             {
                 StreamReader reader = new StreamReader(".//DoNotDraft.txt");
-                doNotDraftList.Add((reader.ReadLine()).ToUpper());
+                do
+                {
+                    string temp = reader.ReadLine();
+                    doNotDraftList.Add(temp.ToUpper());
+                } while (!reader.EndOfStream);
             }
             catch (FileNotFoundException e)
             {
@@ -146,7 +156,7 @@ namespace FPL_Calculator
                     index = source.IndexOf("<", tempindex);
                     int cost = Convert.ToInt32(source.Substring(tempindex, index - tempindex));
 
-                    teamList.Add(name.ToUpper(), new Team(name, cost, ARRAYSIZE));
+                    teamList.Add(name.ToUpper(), new Team(name, cost, ARRAYSIZE, TOTALGAMES));
                 }
                 catch (Exception e)
                 {
@@ -201,7 +211,7 @@ namespace FPL_Calculator
                     index = source.IndexOf("<", tempindex);
                     int cost = Convert.ToInt32(source.Substring(tempindex, index - tempindex));
 
-                    playerList.Add(name.ToUpper(), new Player(name, cost, race, team, ARRAYSIZE));
+                    playerList.Add(name.ToUpper(), new Player(name, cost, race, team, ARRAYSIZE, TOTALGAMES));
                 }
                 catch (Exception e)
                 {
@@ -223,17 +233,18 @@ namespace FPL_Calculator
         /// Parses liquipedia match info for win/loss data
         /// </summary>
         /// <param name="input">Liquipedia markup</param>
-        /// <param name="maxWeeks">Maximum weeks to consider</param>
-        public void ParseMarkup(string input, int maxWeeks)
+        /// <param name="maximumWeeks">Maximum weeks to consider</param>
+        public void ParseMarkup(string input, int maximumWeeks)
         {
             int index = 0;
             int tempindex = 0;
             int week = 0;
             int match = 0;
+            maxWeeks = maximumWeeks;
 
-            if (maxWeeks <= 0 || maxWeeks > ARRAYSIZE)
+            if (maximumWeeks <= 0 || maximumWeeks > ARRAYSIZE)
             {
-                maxWeeks = ARRAYSIZE;
+                maximumWeeks = ARRAYSIZE;
             }
 
             // Loop through markup looking for match data
@@ -245,7 +256,7 @@ namespace FPL_Calculator
                     // Get the week number
                     index = input.IndexOf("W", index) + 1;
                     week = Convert.ToInt32((input.Substring(index, 1)));
-                    if (week > maxWeeks)
+                    if (week > maximumWeeks)
                     {
                         index = input.IndexOf("HiddenSort|Round", index);
                         continue;
@@ -475,7 +486,7 @@ namespace FPL_Calculator
                 output.Write(teamList.ElementAt(i).Value.Name);
 
                 // Write weekly point gains
-                for (int j = 1; j <= ARRAYSIZE; j++)
+                for (int j = 0; j < ARRAYSIZE; j++)
                 {
                     output.Write("\t" + teamList.ElementAt(i).Value.Points(j).ToString());
                 }
@@ -507,7 +518,7 @@ namespace FPL_Calculator
                 output.Write(playerList.ElementAt(i).Value.Name);
 
                 // Write weekly point gains
-                for (int j = 1; j <= ARRAYSIZE; j++)
+                for (int j = 0; j < ARRAYSIZE; j++)
                 {
                     output.Write("\t" + playerList.ElementAt(i).Value.Points(j).ToString());
                 }
@@ -584,73 +595,123 @@ namespace FPL_Calculator
             }
 
             var playerPointSorted = playerPointComparison.OrderByDescending(l => l.Value);
-
+            
             if (limit > playerPointSorted.Count())
             {
                 limit = playerPointSorted.Count();
             }
 
+            // Sort players by cost
+            SortedList<string, int> playerCostComparison = new SortedList<string, int>();
+            for (int i = 0; i < limit; i++)
+            {
+                playerCostComparison.Add(playerList.Keys.ElementAt(i), playerList.ElementAt(i).Value.Cost);
+            }
+
+            var playerCostSorted = playerCostComparison.OrderByDescending(l => l.Value);
+
+            // The goal is to iterate through the list of players in order of increasing cost
+            // Thus, when the cost goes over the allowed limit, we can safely ignore all other entries in the list
+
             string[] players = new string[6];
+
+            int tcost = 0;
+            int p1cost = 0;
+            int p2cost = 0;
+            int p3cost = 0;
+            int p4cost = 0;
+            int p5cost = 0;
+            int p6cost = 0;
+            int possibleTeams = 0;
 
             // Loop for team
             for (int i0 = 0; i0 < teamList.Count; i0++)
             {
                 string team = teamList.ElementAt(i0).Key;
+                tcost = teamList[team].Cost;
 
                 ProgressUpdate(i0 * 100 / teamList.Count());
 
                 // Nest loops for all six players
-                for (int i1 = 0; i1 < limit - 5; i1++)
+                for (int i1 = playerCostSorted.Count() - 1; i1 >= 5; i1--)
                 {
-                    players[0] = playerPointSorted.ElementAt(i1).Key;
+                    players[0] = playerCostSorted.ElementAt(i1).Key;
+                    p1cost = playerList[players[0]].Cost;
                     if (DoNotDraftFailed(players[0], true))
                     {
                         continue;
                     }
 
-                    for (int i2 = i1+1; i2 < limit - 4; i2++)
+                    for (int i2 = i1 - 1; i2 >= 4; i2--)
                     {
-                        players[1] = playerPointSorted.ElementAt(i2).Key;
+                        players[1] = playerCostSorted.ElementAt(i2).Key;
                         if (DoNotDraftFailed(players[1], true))
                         {
                             continue;
                         }
 
-                        for (int i3 = i2+1; i3 < limit - 3; i3++)
+                        p2cost = playerList[players[1]].Cost;
+
+                        for (int i3 = i2-1; i3 >= 3; i3--)
                         {
-                            players[2] = playerPointSorted.ElementAt(i3).Key;
+                            players[2] = playerCostSorted.ElementAt(i3).Key;
                             if (DoNotDraftFailed(players[2], true))
                             {
                                 continue;
                             }
 
-                            for (int i4 = i3 + 1; i4 < limit - 2; i4++)
+                            p3cost = playerList[players[2]].Cost;
+                            if (tcost + p1cost + p2cost + p3cost > MAINCOSTLIMIT)
                             {
-                                players[3] = playerPointSorted.ElementAt(i4).Key;
+                                break;
+                            }
+
+                            for (int i4 = i3 - 1; i4 >= 2; i4--)
+                            {
+                                players[3] = playerCostSorted.ElementAt(i4).Key;
                                 if (DoNotDraftFailed(players[3], true))
                                 {
                                     continue;
                                 }
 
-                                for (int i5 = i4+1; i5 < limit - 1; i5++)
+                                p4cost = playerList[players[3]].Cost;
+                                if (tcost + p1cost + p2cost + p3cost + p4cost > MAINCOSTLIMIT)
                                 {
-                                    players[4] = playerPointSorted.ElementAt(i5).Key;
+                                    break;
+                                }
+
+                                for (int i5 = i4-1; i5 >= 1; i5--)
+                                {
+                                    players[4] = playerCostSorted.ElementAt(i5).Key;
                                     if (DoNotDraftFailed(players[4], true))
                                     {
                                         continue;
                                     }
 
-                                    for (int i6 = i5+1; i6 < limit; i6++)
+                                    p5cost = playerList[players[4]].Cost;
+                                    if (tcost + p1cost + p2cost + p3cost + p4cost + p5cost > MAINCOSTLIMIT)
                                     {
-                                        players[5] = playerPointSorted.ElementAt(i6).Key;
+                                        break;
+                                    }
+
+                                    for (int i6 = i5-1; i6 >= 0; i6--)
+                                    {
+                                        players[5] = playerCostSorted.ElementAt(i6).Key;
 
                                         if (DoNotDraftFailed(players[5], true))
                                         {
                                             continue;
                                         }
 
+                                        p6cost = playerList[players[5]].Cost;
+                                        if (tcost + p1cost + p2cost + p3cost + p4cost + p5cost + p6cost > MAINCOSTLIMIT)
+                                        {
+                                            break;
+                                        }
+
                                         if (CheckTeamRequirements(players, team, true))
                                         {
+                                            possibleTeams++;
                                             if (MainPointTotal(players, team) > totalPoints)
                                             {
                                                 for (int x = 0; x < 6; x++)
@@ -681,12 +742,11 @@ namespace FPL_Calculator
             writer.WriteLine(teamList[selectedTeam].Name + "\t" + teamList[selectedTeam].Cost + "\t" + teamList[selectedTeam].TotalPoints);
 
             writer.Close();
-            errorwriter.Write("Brute force complete");
+            errorwriter.Write("Brute force complete: " + possibleTeams + " teams tested");
         }
 
-        private bool CheckTeamRequirements(string[] players, string team, bool firstDraft)
+        private bool RaceCheck(string[] players)
         {
-            // Race requirement
             bool tflag = false;
             bool pflag = false;
             bool zflag = false;
@@ -694,14 +754,14 @@ namespace FPL_Calculator
             {
                 switch (playerList[players[i]].Race.ToLower())
                 {
-                    case "t": 
-                        tflag = true; 
+                    case "t":
+                        tflag = true;
                         break;
-                    case "p": 
-                        pflag = true; 
+                    case "p":
+                        pflag = true;
                         break;
-                    case "z": 
-                        zflag = true; 
+                    case "z":
+                        zflag = true;
                         break;
                 }
             }
@@ -711,13 +771,29 @@ namespace FPL_Calculator
                 return false;
             }
 
-            // Cost requirement
-            if (MainCostRequirementCheck(players, team) > 0)
+            return true;
+        }
+
+        private bool CheckTeamRequirements(string[] players, string team, bool firstDraft)
+        {
+            // Race requirement
+            if (RaceCheck(players))
+            {
+
+
+
+                // Cost requirement
+                //if (MainCostRequirementCheck(players, team) > 0)
+                //{
+                //    return false;
+                //}
+
+                return true;
+            }
+            else
             {
                 return false;
             }
-
-            return true;
         }
         #endregion BruteForceMainNoTrades
 
@@ -951,6 +1027,1034 @@ namespace FPL_Calculator
             writer.Close();
         }
         #endregion BestTeamGenerationNoTrades
+
+        public void BestTeamGenerationWithTrades(int maxPlayers)
+        {
+            errorwriter.Write("Starting brute force solution with trades");
+
+            if (maxPlayers > playerList.Count)
+            {
+                maxPlayers = playerList.Count;
+            }
+
+            List<string> bestPlayers = FindBestPlayersPerWeek(maxWeeks, maxPlayers);
+
+            errorwriter.Write("Picking best " + maxPlayers + " players per week. " + bestPlayers.Count + " players total.");
+
+            string[] selectedTeam = new string[maxWeeks];
+            string[][] selectedPlayers = new string[maxWeeks][];
+            string[] team = new string[6];
+            string[][] players = new string[maxWeeks][];
+            string[] potentialTeam = new string[6];
+            string[][] potentialPlayers = new string[maxWeeks][];
+            int bestResult = 0;
+
+            for (int i=0; i<maxWeeks;i++)
+            {
+                selectedPlayers[i] = new string[6];
+                players[i] = new string[6];
+                potentialPlayers[i] = new string[6];
+            }
+
+            errorwriter.Write("Sorting by point gain per week");
+
+            // Sort players by point gain per week
+            SortedList<string, int> playerPointComparison = new SortedList<string, int>();
+            for (int i = 0; i < bestPlayers.Count; i++)
+            {
+                playerPointComparison.Add(bestPlayers[i], playerList.ElementAt(i).Value.TotalPoints);
+            }
+
+            var playerPointSorted = playerPointComparison.OrderByDescending(l => l.Value);
+
+            errorwriter.Write("Sorting by cost");
+
+            // Sort players by cost
+            SortedList<string, int> playerCostComparison = new SortedList<string, int>();
+            for (int i = 0; i < bestPlayers.Count; i++)
+            {
+                playerCostComparison.Add(playerPointSorted.ElementAt(i).Key, playerList[playerPointSorted.ElementAt(i).Key].Cost);
+            }
+
+            var playerCostSorted = playerCostComparison.OrderByDescending(l => l.Value);
+
+            errorwriter.Write("Sorting by trade value");
+
+            // Sort players by trade value
+            SortedList<string, double>[] playerTradeComparison = new SortedList<string, double>[maxWeeks];
+            for (int i = 0; i < maxWeeks; i++)
+            {
+                playerTradeComparison[i] = new SortedList<string, double>();
+                for (int j = 0; j < bestPlayers.Count; j++)
+                {
+                    playerTradeComparison[i].Add(playerPointSorted.ElementAt(j).Key, playerList[playerPointSorted.ElementAt(j).Key].AdjustedTradeValue(i+1));
+                }
+            }
+
+            IOrderedEnumerable<KeyValuePair<string, double>>[] playerTradeSorted = new IOrderedEnumerable<KeyValuePair<string,double>>[maxWeeks];
+            for (int i = 0; i < maxWeeks; i++)
+            {
+                playerTradeSorted[i] = playerTradeComparison[i].OrderByDescending(l => l.Value);
+            }
+
+            // Sort teams by trade value
+            SortedList<string, double>[] teamTradeComparison = new SortedList<string, double>[maxWeeks];
+            for (int i = 0; i < maxWeeks; i++)
+            {
+                teamTradeComparison[i] = new SortedList<string,double>();
+                for (int j = 0; j < 6; j++)
+                {
+                    teamTradeComparison[i].Add(teamList.ElementAt(j).Key, teamList.ElementAt(j).Value.AdjustedTradeValue(i+1));
+                }
+            }
+
+            IOrderedEnumerable<KeyValuePair<string, double>>[] teamTradeSorted = new IOrderedEnumerable<KeyValuePair<string, double>>[6];
+            for (int i = 0; i < maxWeeks; i++)
+            {
+                teamTradeSorted[i] = teamTradeComparison[i].OrderByDescending(l => l.Value);
+            }
+
+            // The goal is to iterate through the list of players in order of increasing cost
+            // Thus, when the cost goes over the allowed limit, we can safely ignore all other entries in the list
+            // and continue the loop
+            int tcost = 0;
+            int p1cost = 0;
+            int p2cost = 0;
+            int p3cost = 0;
+            int p4cost = 0;
+            int p5cost = 0;
+            int p6cost = 0;
+
+            // Loop for team
+            for (int i0 = 0; i0 < teamList.Count; i0++)
+            {
+                team[0] = teamList.ElementAt(i0).Key;
+                tcost = teamList[team[0]].Cost;
+
+                ProgressUpdate(i0 * 100 / teamList.Count());
+
+                // Nest loops for all six players
+                for (int i1 = playerCostSorted.Count() - 1; i1 >= 5; i1--)
+                {
+                    players[0][0] = playerCostSorted.ElementAt(i1).Key;
+                    p1cost = playerList[players[0][0]].Cost;
+                    if (DoNotDraftFailed(players[0][0], true))
+                    {
+                        continue;
+                    }
+
+                    for (int i2 = i1 - 1; i2 >= 4; i2--)
+                    {
+                        players[0][1] = playerCostSorted.ElementAt(i2).Key;
+                        if (DoNotDraftFailed(players[0][1], true))
+                        {
+                            continue;
+                        }
+
+                        p2cost = playerList[players[0][1]].Cost;
+
+                        for (int i3 = i2 - 1; i3 >= 3; i3--)
+                        {
+                            players[0][2] = playerCostSorted.ElementAt(i3).Key;
+                            if (DoNotDraftFailed(players[0][2], true))
+                            {
+                                continue;
+                            }
+
+                            p3cost = playerList[players[0][2]].Cost;
+                            if (tcost + p1cost + p2cost + p3cost > MAINCOSTLIMIT)
+                            {
+                                break;
+                            }
+
+                            for (int i4 = i3 - 1; i4 >= 2; i4--)
+                            {
+                                players[0][3] = playerCostSorted.ElementAt(i4).Key;
+                                if (DoNotDraftFailed(players[0][3], true))
+                                {
+                                    continue;
+                                }
+
+                                p4cost = playerList[players[0][3]].Cost;
+                                if (tcost + p1cost + p2cost + p3cost + p4cost > MAINCOSTLIMIT)
+                                {
+                                    break;
+                                }
+
+                                for (int i5 = i4 - 1; i5 >= 1; i5--)
+                                {
+                                    players[0][4] = playerCostSorted.ElementAt(i5).Key;
+                                    if (DoNotDraftFailed(players[0][4], true))
+                                    {
+                                        continue;
+                                    }
+
+                                    p5cost = playerList[players[0][4]].Cost;
+                                    if (tcost + p1cost + p2cost + p3cost + p4cost + p5cost > MAINCOSTLIMIT)
+                                    {
+                                        break;
+                                    }
+
+                                    for (int i6 = i5 - 1; i6 >= 0; i6--)
+                                    {
+                                        players[0][5] = playerCostSorted.ElementAt(i6).Key;
+
+                                        if (DoNotDraftFailed(players[0][5], true))
+                                        {
+                                            continue;
+                                        }
+
+                                        p6cost = playerList[players[0][5]].Cost;
+                                        if (tcost + p1cost + p2cost + p3cost + p4cost + p5cost + p6cost > MAINCOSTLIMIT)
+                                        {
+                                            break;
+                                        }
+
+                                        // Ensure initial team meets all draft requirements
+                                        if (CheckTeamRequirements(players[0], team[0], true))
+                                        {
+                                            // Calculate point gains for the week
+                                            int points = teamList[team[0]].Points(0);
+                                            for (int k = 0; k < 6; k++)
+                                            {
+                                                points += playerList[players[0][k]].Points(0);
+                                            }
+
+                                            // Now that we have an initial team, we need to evaluate trades
+                                            int defaultSelectedPoints = bestResult;
+                                            errorwriter.Write("Trying team [" +
+                                                team[0] + "," +
+                                                players[0][0] + "," +
+                                                players[0][1] + "," +
+                                                players[0][2] + "," +
+                                                players[0][3] + "," +
+                                                players[0][4] + "," +
+                                                players[0][5] + "]"
+                                                );
+                                            int result = EvaluateMainTrades(ref players, 
+                                                                        ref team, 
+                                                                        0, 
+                                                                        points, 
+                                                                        ref playerTradeSorted, 
+                                                                        ref teamTradeSorted,
+                                                                        ref potentialPlayers,
+                                                                        ref potentialTeam,
+                                                                        ref defaultSelectedPoints);
+
+                                            if (result > bestResult)
+                                            {
+                                                for (int l = 0; l < maxWeeks; l++)
+                                                {
+                                                    selectedTeam[l] = potentialTeam[l];
+                                                    for (int m = 0; m < 6; m++)
+                                                    {
+                                                        selectedPlayers[l][m] = potentialPlayers[l][m];
+                                                    }
+                                                }
+
+                                                bestResult = result;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            StreamWriter writer = new StreamWriter(".//MainTeamWithTrades (Brute Force).txt");
+            for (int i = 1; i <= maxWeeks; i++)
+            {
+                writer.WriteLine("Week " + i);
+                writer.WriteLine("Name\tCost\tPoints");
+                writer.WriteLine(teamList[selectedTeam[i - 1]].Name + "\t" +
+                                 teamList[selectedTeam[i - 1]].Cost + "\t" +
+                                 teamList[selectedTeam[i - 1]].Points(i - 1));
+                for (int j = 0; j < 6; j++)
+                {
+                    writer.WriteLine(playerList[selectedPlayers[i - 1][j]].Name + "\t" +
+                                     playerList[selectedPlayers[i - 1][j]].Cost + "\t" +
+                                     playerList[selectedPlayers[i - 1][j]].Points(i - 1));
+                }
+
+                writer.Write("\n\n");
+            }
+
+            writer.Close();
+            errorwriter.Write("Brute force complete");
+        }
+
+        #region EvaluateMainTrades
+        private int EvaluateMainTrades(ref string[][] players, 
+                                    ref string[] team,  
+                                    int week,
+                                    int points,
+                                    ref IOrderedEnumerable<KeyValuePair<string,double>>[] playerTradeSorted,
+                                    ref IOrderedEnumerable<KeyValuePair<string,double>>[] teamTradeSorted,
+                                    ref string[][] selectedPlayers,
+                                    ref string[] selectedTeam,
+                                    ref int selectedPoints)
+        {
+            try
+            {
+
+                // Ends recursion
+                if (week == maxWeeks - 1)
+                {
+                    //errorwriter.Write("End of branch, returning " + points + " points");
+                    return points;
+                }
+
+                //errorwriter.Write("Evaluating trade (Week " + week + ")");
+
+                // Fill out blank strings for the following week
+                team[week + 1] = team[week];
+                for (int y = 0; y < 6; y++)
+                {
+                    players[week + 1][y] = players[week][y];
+                }
+
+                //errorwriter.Write("Removing bad trades for first trade");
+                for (int tr1 = 0; tr1 < 6; tr1++)
+                {
+                    List<string> possibleTrades1 = GetListOfTrades(players[week][tr1], playerTradeSorted[week], false);
+
+                    // Remove trades that don't result in a point gain
+                    for (int i = 0; i < possibleTrades1.Count; i++)
+                    {
+                        bool badTrade = true;
+                        for (int j = week + 1; j < maxWeeks; j++)
+                        {
+                            if (playerList[possibleTrades1[i]].FuturePoints(week + 1, j) > playerList[players[week][tr1]].FuturePoints(week + 1, j) + 1)
+                            {
+                                badTrade = false;
+                                break;
+                            }
+                        }
+
+                        // Remove bad trade. Decrease index to account for removed list entry
+                        if (badTrade)
+                        {
+                            possibleTrades1.Remove(possibleTrades1[i]);
+                            i--;
+                        }
+                    }
+
+                    // Add the original player just in case
+                    possibleTrades1.Add(players[week][tr1]);
+
+                    // Pick the second player to be traded
+                    for (int tr2 = tr1 + 1; tr2 < 7; tr2++)
+                    {
+                        List<string> possibleTrades2 = new List<string>();
+
+                        // Index 6 is the progaming team
+                        if (tr2 == 6)
+                        {
+                            possibleTrades2 = GetListOfTrades(team[week], teamTradeSorted[week], false);
+
+                            //errorwriter.Write("Removing bad trades for second trade (team)");
+                            // Remove trades that don't result in a point gain
+                            for (int i = 0; i < possibleTrades2.Count; i++)
+                            {
+                                bool badTrade = true;
+                                for (int j = week + 1; j < maxWeeks; j++)
+                                {
+                                    if (teamList[possibleTrades2[i]].FuturePoints(week + 1, j) > teamList[team[week]].FuturePoints(week + 1, j) + 1)
+                                    {
+                                        badTrade = false;
+                                        break;
+                                    }
+                                }
+
+                                // Remove bad trade. Decrease index to account for removed list entry
+                                if (badTrade)
+                                {
+                                    possibleTrades2.Remove(possibleTrades2[i]);
+                                    i--;
+                                }
+                            }
+
+                            // Add the original team just in case
+                            possibleTrades2.Add(team[week]);
+
+                            // Iterate through each possible trade
+                            string pastPlayer1 = players[week + 1][tr1];
+                            string pastTeam = team[week + 1];
+                            for (int i = 0; i < possibleTrades1.Count; i++)
+                            {
+                                // Check that the trade is valid
+                                if (CheckTrade(players[week + 1], possibleTrades1[i], tr1))
+                                {
+                                    //errorwriter.Write("Trying trade 1: " + players[week][tr1] + " -> " + possibleTrades1[i] + " (team)");
+                                    players[week + 1][tr1] = possibleTrades1[i];
+
+                                    // Do the team trade
+                                    for (int j = 0; j < possibleTrades2.Count; j++)
+                                    {
+                                        // No need to check that the team trade is good
+                                        //errorwriter.Write("Trying trade 2: " + team[week] + " -> " + possibleTrades2[j]);
+                                        team[week + 1] = possibleTrades2[j];
+
+                                        // Trade tax
+                                        int newPoints = points;
+                                        if (players[week + 1][tr1] != players[week][tr1])
+                                        {
+                                            newPoints--;
+                                        }
+
+                                        if (team[week + 1] != team[week])
+                                        {
+                                            newPoints--;
+                                        }
+
+                                        // Add point gains for the week
+                                        newPoints += teamList[team[week + 1]].Points(week + 1);
+                                        for (int k = 0; k < 6; k++)
+                                        {
+                                            newPoints += playerList[players[week + 1][k]].Points(week + 1);
+                                        }
+
+                                        // Evaluate post-trade
+                                        int result = EvaluateMainTrades(ref players,
+                                                                    ref team,
+                                                                    week + 1,
+                                                                    newPoints,
+                                                                    ref playerTradeSorted,
+                                                                    ref teamTradeSorted,
+                                                                    ref selectedPlayers,
+                                                                    ref selectedTeam,
+                                                                    ref selectedPoints);
+
+                                        // Save the resulting team if they have the most points
+                                        if (result > selectedPoints)
+                                        {
+                                            for (int x = 0; x < maxWeeks; x++)
+                                            {
+                                                errorwriter.Write("Saving new team [" +
+                                                                  "W" + 
+                                                                  x + 
+                                                                  "][" + 
+                                                                  team[x] + "," + 
+                                                                  players[x][0] + "," +
+                                                                  players[x][1] + "," +
+                                                                  players[x][2] + "," +
+                                                                  players[x][3] + "," +
+                                                                  players[x][4] + "," +
+                                                                  players[x][5] + "][" +
+                                                                  result + "]"
+                                                                  );
+                                            }
+                                            for (int l = 0; l < maxWeeks; l++)
+                                            {
+                                                selectedTeam[l] = team[l];
+                                                for (int m = 0; m < 6; m++)
+                                                {
+                                                    selectedPlayers[l][m] = players[l][m];
+                                                }
+                                            }
+
+                                            selectedPoints = result;
+                                        }
+                                    }
+                                }
+                            }
+
+                            players[week + 1][tr1] = pastPlayer1;
+                            team[week + 1] = pastTeam;
+                        }
+                        else
+                        {
+                            possibleTrades2 = GetListOfTrades(players[week][tr1], playerTradeSorted[week], false);
+
+                            // Remove trades that don't result in a point gain
+                            //errorwriter.Write("Removing bad trades for second trade");
+                            for (int i = 0; i < possibleTrades2.Count; i++)
+                            {
+                                bool badTrade = true;
+                                for (int j = week + 1; j < maxWeeks; j++)
+                                {
+                                    if (playerList[possibleTrades2[i]].FuturePoints(week + 1, j) > playerList[players[week][tr2]].FuturePoints(week + 1, j) + 1)
+                                    {
+                                        badTrade = false;
+                                        break;
+                                    }
+                                }
+
+                                if (badTrade)
+                                {
+                                    possibleTrades2.Remove(possibleTrades2[i]);
+                                }
+                            }
+
+                            // Add the original team just in case
+                            possibleTrades2.Add(players[week][tr2]);
+
+                            // Save values for players just in case since we're using ref
+                            string pastPlayer1 = players[week + 1][tr1];
+                            string pastPlayer2 = players[week + 1][tr2];
+
+                            // Iterate through each possible trade
+                            // Do the first trade
+                            for (int i = 0; i < possibleTrades1.Count; i++)
+                            {
+                                // Check that the trade is valid
+                                if (CheckTrade(players[week + 1], possibleTrades1[i], tr1))
+                                {
+                                    //errorwriter.Write("Trying trade 1: " + players[week][tr1] + " -> " + possibleTrades1[i]);
+
+                                    players[week + 1][tr1] = possibleTrades1[i];
+
+                                    // Do the second trade
+                                    for (int j = 0; j < possibleTrades2.Count; j++)
+                                    {
+                                        // Check that the trade is valid
+                                        if (CheckTrade(players[week + 1], possibleTrades2[j], tr2))
+                                        {
+                                            //errorwriter.Write("Trying trade 2: " + players[week][tr2] + " -> " + possibleTrades2[j]);
+                                            players[week + 1][tr2] = possibleTrades2[j];
+
+                                            // Trade tax
+                                            int newPoints = points;
+                                            if (players[week + 1][tr1] != players[week][tr1])
+                                            {
+                                                newPoints--;
+                                            }
+
+                                            if (players[week + 1][tr2] != players[week][tr2])
+                                            {
+                                                newPoints--;
+                                            }
+
+                                            // Add point gains for the week
+                                            newPoints += teamList[team[week + 1]].Points(week + 1);
+                                            for (int k = 0; k < 6; k++)
+                                            {
+                                                newPoints += playerList[players[week + 1][k]].Points(week + 1);
+                                            }
+
+                                            // Evaluate post-trade
+                                            int result = EvaluateMainTrades(ref players,
+                                                                        ref team,
+                                                                        week + 1,
+                                                                        newPoints,
+                                                                        ref playerTradeSorted,
+                                                                        ref teamTradeSorted,
+                                                                        ref selectedPlayers,
+                                                                        ref selectedTeam,
+                                                                        ref selectedPoints);
+
+                                            // Save the resulting team if they have the most points
+                                            if (result > selectedPoints)
+                                            {
+                                                for (int x = 0; x < maxWeeks; x++)
+                                                {
+                                                    errorwriter.Write("Saving new team [" +
+                                                                      "W" +
+                                                                      x +
+                                                                      "][" +
+                                                                      team[x] + "," +
+                                                                      players[x][0] + "," +
+                                                                      players[x][1] + "," +
+                                                                      players[x][2] + "," +
+                                                                      players[x][3] + "," +
+                                                                      players[x][4] + "," +
+                                                                      players[x][5] + "][" +
+                                                                      result + "]"
+                                                                      );
+                                                }
+                                                for (int l = 0; l < maxWeeks; l++)
+                                                {
+                                                    selectedTeam[l] = team[l];
+                                                    for (int m = 0; m < 6; m++)
+                                                    {
+                                                        selectedPlayers[l][m] = players[l][m];
+                                                    }
+                                                }
+
+                                                selectedPoints = result;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            players[week + 1][tr1] = pastPlayer1;
+                            players[week + 1][tr2] = pastPlayer2;
+                        }
+                    }
+                }
+
+                return selectedPoints;
+            }
+            catch (Exception e)
+            {
+                errorwriter.Write("Error while evaluating trades (Week" + week + ") [" +
+                                  players[week][0] + "," +
+                                  players[week][1] + "," +
+                                  players[week][2] + "," +
+                                  players[week][3] + "," +
+                                  players[week][4] + "," +
+                                  players[week][5] + "," +
+                                  players[week][6] + "," +
+                                  team[week] + "]");
+
+                throw e;
+            }
+        }
+        #endregion EvaluateMainTrades
+
+        public void BestAntiGenerationWithTrades(int maxPlayers)
+        {
+            errorwriter.Write("Starting brute force anti with trades");
+
+            if (maxPlayers > playerList.Count)
+            {
+                maxPlayers = playerList.Count;
+            }
+
+            List<string> bestPlayers = FindWorstPlayersPerWeek(maxWeeks, maxPlayers);
+
+            errorwriter.Write("Picking worst " + maxPlayers + " players per week. " + bestPlayers.Count + " players total.");
+
+            string[][] selectedPlayers = new string[maxWeeks][];
+            string[][] players = new string[maxWeeks][];
+            string[][] potentialPlayers = new string[maxWeeks][];
+            int bestResult = -99;
+
+            for (int i = 0; i < maxWeeks; i++)
+            {
+                selectedPlayers[i] = new string[6];
+                players[i] = new string[6];
+                potentialPlayers[i] = new string[6];
+            }
+
+            errorwriter.Write("Sorting by point gain per week");
+
+            // Sort players by point gain per week
+            SortedList<string, int>[] playerPointComparison = new SortedList<string, int>[maxWeeks];
+            for (int i = 0; i < maxWeeks; i++)
+            {
+                playerPointComparison[i] = new SortedList<string, int>();
+                for (int j = 0; j < bestPlayers.Count; j++)
+                {
+                    playerPointComparison[i].Add(bestPlayers[j], playerList.ElementAt(j).Value.Points(i));
+                }
+            }
+
+            IOrderedEnumerable<KeyValuePair<string, int>>[] playerPointSorted = new IOrderedEnumerable<KeyValuePair<string, int>>[maxWeeks];
+            for (int i = 0; i < maxWeeks; i++)
+            {
+                playerPointSorted[i] = playerPointComparison[i].OrderByDescending(l => l.Value);
+            }
+
+            errorwriter.Write("Sorting by cost");
+
+            // Sort players by cost
+            SortedList<string, int> playerCostComparison = new SortedList<string, int>();
+            for (int i = 0; i < bestPlayers.Count; i++)
+            {
+                playerCostComparison.Add(bestPlayers[i], playerList[bestPlayers[i]].Cost);
+            }
+
+            var playerCostSorted = playerCostComparison.OrderByDescending(l => l.Value);
+
+            errorwriter.Write("Sorting by trade value");
+
+            // Sort players by trade value
+            SortedList<string, double>[] playerTradeComparison = new SortedList<string, double>[maxWeeks];
+            for (int i = 0; i < maxWeeks; i++)
+            {
+                playerTradeComparison[i] = new SortedList<string, double>();
+                for (int j = 0; j < bestPlayers.Count; j++)
+                {
+                    playerTradeComparison[i].Add(bestPlayers[j], playerList[bestPlayers[j]].AdjustedTradeValue(i+1));
+                }
+            }
+
+            IOrderedEnumerable<KeyValuePair<string, double>>[] playerTradeSorted = new IOrderedEnumerable<KeyValuePair<string, double>>[maxWeeks];
+            for (int i = 0; i < maxWeeks; i++)
+            {
+                playerTradeSorted[i] = playerTradeComparison[i].OrderByDescending(l => l.Value);
+            }
+
+            // The goal is to iterate through the list of players in order of increasing cost
+            // Thus, when the cost goes over the allowed limit, we can safely ignore all other entries in the list
+            // and continue the loop
+            int p1cost = 0;
+            int p2cost = 0;
+            int p3cost = 0;
+
+            // Nest loops for all three players
+            for (int i1 = playerCostSorted.Count() - 1; i1 >= 2; i1--)
+            {
+                ProgressUpdate((playerCostSorted.Count() - i1) * 100 / playerCostSorted.Count());
+                
+                players[0][0] = playerCostSorted.ElementAt(i1).Key;
+                p1cost = playerList[players[0][0]].Cost;
+                if (DoNotDraftFailed(players[0][0], true))
+                {
+                    continue;
+                }
+
+                for (int i2 = i1 - 1; i2 >= 1; i2--)
+                {
+                    players[0][1] = playerCostSorted.ElementAt(i2).Key;
+                    if (DoNotDraftFailed(players[0][1], true))
+                    {
+                        continue;
+                    }
+
+                    p2cost = playerList[players[0][1]].Cost;
+
+                    for (int i3 = i2 - 1; i3 >= 0; i3--)
+                    {
+                        players[0][2] = playerCostSorted.ElementAt(i3).Key;
+                        if (DoNotDraftFailed(players[0][2], true))
+                        {
+                            continue;
+                        }
+
+                        p3cost = playerList[players[0][2]].Cost;
+                        if (p1cost + p2cost + p3cost < ANTICOSTLIMIT)
+                        {
+                            break;
+                        }
+
+                        // Calculate point gains for the week
+                        int points = 0;
+                        for (int k = 0; k < 3; k++)
+                        {
+                            points -= playerList[players[0][k]].Points(0);
+                        }
+
+                        // Only try teams that may be better
+                        if (points > bestResult)
+                        {
+                            // Now that we have an initial team, we need to evaluate trades
+                            int defaultSelectedPoints = bestResult;
+                            errorwriter.Write("Trying anti [" +
+                                players[0][0] + "," +
+                                players[0][1] + "," +
+                                players[0][2] + "]"
+                                );
+                            int result = EvaluateAntiTrades(ref players,
+                                                        0,
+                                                        points,
+                                                        ref playerTradeSorted,
+                                                        ref potentialPlayers,
+                                                        ref defaultSelectedPoints);
+
+                            if (result > bestResult)
+                            {
+                                for (int l = 0; l < maxWeeks; l++)
+                                {
+                                    for (int m = 0; m < 3; m++)
+                                    {
+                                        selectedPlayers[l][m] = potentialPlayers[l][m];
+                                    }
+                                }
+
+                                bestResult = result;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Print best solution
+            StreamWriter writer = new StreamWriter(".//AntiTeamWithTrades (Brute Force).txt");
+            for (int i = 1; i <= maxWeeks; i++)
+            {
+                writer.WriteLine("Week " + i);
+                writer.WriteLine("Name\tCost\tPoints");
+                for (int j = 0; j < 3; j++)
+                {
+                    writer.WriteLine(playerList[selectedPlayers[i - 1][j]].Name + "\t" +
+                                     playerList[selectedPlayers[i - 1][j]].Cost + "\t" +
+                                     playerList[selectedPlayers[i - 1][j]].Points(i - 1));
+                }
+
+                writer.Write("\n\n");
+            }
+
+            writer.Close();
+            errorwriter.Write("Brute force complete");
+        }
+
+        #region EvaluateAntiTrades
+        private int EvaluateAntiTrades(ref string[][] players,
+                                       int week,
+                                       int points,
+                                       ref IOrderedEnumerable<KeyValuePair<string, double>>[] playerTradeSorted,
+                                       ref string[][] selectedPlayers,
+                                       ref int selectedPoints)
+        {
+            try
+            {
+                // Ends recursion
+                if (week == maxWeeks - 1)
+                {
+                    //errorwriter.Write("End of branch, returning " + points + " points");
+                    return points;
+                }
+
+                //errorwriter.Write("Evaluating trade (Week " + week + ")");
+
+                // Fill out blank strings for the following week
+                for (int y = 0; y < 3; y++)
+                {
+                    players[week + 1][y] = players[week][y];
+                }
+
+                //errorwriter.Write("Removing bad trades");
+                for (int tr1 = 0; tr1 < 3; tr1++)
+                {
+                    List<string> possibleTrades1 = GetListOfTrades(players[week][tr1], playerTradeSorted[week], true);
+
+                    // Remove trades that don't result in a point gain
+                    for (int i = 0; i < possibleTrades1.Count; i++)
+                    {
+                        bool badTrade = true;
+                        for (int j = week + 1; j < maxWeeks; j++)
+                        {
+                            if (playerList[possibleTrades1[i]].FuturePoints(week + 1, j) + 1 < playerList[players[week][tr1]].FuturePoints(week + 1, j))
+                            {
+                                badTrade = false;
+                                break;
+                            }
+                        }
+
+                        // Remove bad trade. Decrease index to account for removed list entry
+                        if (badTrade)
+                        {
+                            possibleTrades1.Remove(possibleTrades1[i]);
+                            i--;
+                        }
+                    }
+
+                    // Add the original player just in case
+                    possibleTrades1.Add(players[week][tr1]);
+
+                    // Save values for players just in case since we're using ref
+                    string pastPlayer1 = players[week + 1][tr1];
+                    
+                    // Iterate through each possible trade
+                    bool tradeOK = true;
+                    for (int i = 0; i < possibleTrades1.Count; i++)
+                    {
+                        // Check that we're not trading for someone already on our team
+                        for (int j = 0; j < 3; j++)
+                        {
+                            // Reusing the same player is fine
+                            if (j == tr1)
+                            {
+                                continue;
+                            }
+                            if (possibleTrades1[i] == players[week+1][j])
+                            {
+                                tradeOK = false;
+                                break;
+                            }
+                        }
+
+                        if (!tradeOK)
+                        { 
+                            continue; 
+                        }
+                            
+                        //errorwriter.Write("Trying trade 1: " + players[week][tr1] + " -> " + possibleTrades1[i]);
+
+                        players[week + 1][tr1] = possibleTrades1[i];
+
+                        // Trade tax
+                        int newPoints = points;
+                        if (players[week + 1][tr1] != players[week][tr1])
+                        {
+                            newPoints--;
+                        }
+
+                        // Add point gains for the week
+                        for (int k = 0; k < 3; k++)
+                        {
+                            newPoints -= playerList[players[week + 1][k]].Points(week + 1);
+                        }
+
+                        // No point continuing the branch if we're already over the previous best
+                        if (newPoints < selectedPoints)
+                        {
+                            continue;
+                        }
+
+                        // Evaluate post-trade
+                        int result = EvaluateAntiTrades(ref players,
+                                                    week + 1,
+                                                    newPoints,
+                                                    ref playerTradeSorted,
+                                                    ref selectedPlayers,
+                                                    ref selectedPoints);
+
+                        // Save the resulting team if they have the least points
+                        if (result > selectedPoints)
+                        {
+                            for (int x = 0; x < maxWeeks; x++)
+                            {
+                                errorwriter.Write("Saving new anti [" +
+                                                    "W" +
+                                                    x +
+                                                    "][" +
+                                                    players[x][0] + "," +
+                                                    players[x][1] + "," +
+                                                    players[x][2] + "][" +
+                                                    result + "]"
+                                                    );
+                            }
+                            for (int l = 0; l < maxWeeks; l++)
+                            {
+                                for (int m = 0; m < 3; m++)
+                                {
+                                    selectedPlayers[l][m] = players[l][m];
+                                }
+                            }
+
+                            selectedPoints = result;
+                        }
+                    }
+
+                    players[week + 1][tr1] = pastPlayer1;
+                }
+            
+                return selectedPoints;
+            }
+            catch (Exception e)
+            {
+                errorwriter.Write("Error while evaluating trades (Week" + week + ") [" +
+                                  players[week][0] + "," +
+                                  players[week][1] + "," +
+                                  players[week][2] + "]");
+                throw e;
+            }
+        }
+        #endregion EvaluateAntiTrades
+
+        /// <summary>
+        /// Checks to make sure the trade is valid. Not required for progaming team trades
+        /// </summary>
+        /// <param name="players">Current team</param>
+        /// <param name="newPlayer">Incoming player</param>
+        /// <param name="index">Index of player to be traded</param>
+        /// <returns>True if the trade is good</returns>
+        private bool CheckTrade(string[] players, string newPlayer, int index)
+        {
+            // Check that we're not trading for someone already on our team
+            for (int i = 0; i < 6; i++)
+            {
+                // Allow keeping the same player
+                if (i == index)
+                {
+                    continue;
+                }
+                else if (newPlayer == players[i])
+                {
+                    return false;
+                }
+            }
+
+            // Check race requirement
+            players[index] = newPlayer;
+            if (RaceCheck(players))
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        private List<string> FindBestPlayersPerWeek(int weeks, int maxPlayers)
+        {
+            List<string> results = new List<string>();
+            for (int w = 0; w < weeks; w++)
+            {
+                // Sort players by points
+                SortedList<string, int> playerPointComparison = new SortedList<string, int>();
+                for (int i = 0; i < playerList.Count; i++)
+                {
+                    playerPointComparison.Add(playerList.Keys.ElementAt(i), playerList.ElementAt(i).Value.Points(w));
+                }
+
+                var sortedplayers = playerPointComparison.OrderByDescending(l => l.Value);
+
+                for (int i = 0; i < maxPlayers; i++)
+                {
+                    if (!results.Contains(sortedplayers.ElementAt(i).Key))
+                    {
+                        results.Add(sortedplayers.ElementAt(i).Key);
+                    }
+                }
+            }
+
+            return results;
+        }
+
+        private List<string> FindWorstPlayersPerWeek(int weeks, int maxPlayers)
+        {
+            List<string> results = new List<string>();
+            for (int w = 0; w < weeks; w++)
+            {
+                // Sort players by points
+                SortedList<string, int> playerPointComparison = new SortedList<string, int>();
+                for (int i = 0; i < playerList.Count; i++)
+                {
+                    playerPointComparison.Add(playerList.Keys.ElementAt(i), playerList.ElementAt(i).Value.Points(w));
+                }
+
+                var sortedplayers = playerPointComparison.OrderByDescending(l => l.Value);
+
+                for (int i = playerPointComparison.Count - 1; i >= playerPointComparison.Count - maxPlayers; i--)
+                {
+                    if (!results.Contains(sortedplayers.ElementAt(i).Key))
+                    {
+                        results.Add(sortedplayers.ElementAt(i).Key);
+                    }
+                }
+            }
+
+            return results;
+        }
+
+        private List<string> GetListOfTrades(string player, IOrderedEnumerable<KeyValuePair<string, double>> tradeList, bool topDown)
+        {
+            List<string> results = new List<string>();
+
+            if (topDown)
+            {
+                for (int i = 0; i < tradeList.Count(); i++)
+                {
+                    if (tradeList.ElementAt(i).Key == player)
+                    {
+                        break;
+                    }
+
+                    results.Add(tradeList.ElementAt(i).Key);
+                }
+            }
+            else
+            {
+                for (int i = tradeList.Count() - 1; i >= 0; i--)
+                {
+                    if (tradeList.ElementAt(i).Key == player)
+                    {
+                        break;
+                    }
+
+                    results.Add(tradeList.ElementAt(i).Key);
+                }
+            }
+            return results;
+        }
 
         #region RequirementChecks
         /// <summary>
